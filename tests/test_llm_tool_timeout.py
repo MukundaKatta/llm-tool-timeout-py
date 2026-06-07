@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import time
 
 import pytest
@@ -164,6 +165,39 @@ def test_async_kwargs_passed():
         return f"hi {name}"
 
     assert asyncio.run(async_greet(name="bob")) == "hi bob"
+
+
+# ---------------------------------------------------------------------------
+# with_timeout — callables without __name__
+# ---------------------------------------------------------------------------
+
+
+def test_sync_partial_without_tool_name():
+    # functools.partial objects have no __name__; wrapping must not crash and
+    # should derive a sensible name from the underlying function.
+    p = functools.partial(slow_fn)
+    wrapped = with_timeout(0.05)(p)
+    with pytest.raises(ToolTimeoutError) as exc_info:
+        wrapped(0.5)
+    assert exc_info.value.tool_name == "slow_fn"
+
+
+def test_sync_callable_instance_without_tool_name():
+    class Doubler:
+        def __call__(self, x: int) -> int:
+            return x * 2
+
+    wrapped = with_timeout(1.0)(Doubler())
+    assert wrapped(5) == 10
+
+
+def test_registry_wrap_partial_without_tool_name():
+    p = functools.partial(slow_fn)
+    reg = TimeoutRegistry(default_seconds=0.05)
+    wrapped = reg.wrap(p)
+    with pytest.raises(ToolTimeoutError) as exc_info:
+        wrapped(0.5)
+    assert exc_info.value.tool_name == "slow_fn"
 
 
 # ---------------------------------------------------------------------------

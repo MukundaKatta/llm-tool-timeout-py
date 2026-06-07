@@ -32,6 +32,23 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 
+def _callable_name(fn: Callable[..., Any]) -> str:
+    """Best-effort human-readable name for a callable.
+
+    Plain functions and coroutines expose ``__name__``, but common wrappers
+    used for agent tools — ``functools.partial`` objects and callable class
+    instances — do not.  Fall back to the name of the underlying callable,
+    then to the class name, so deriving a name never raises ``AttributeError``.
+    """
+    name = getattr(fn, "__name__", None)
+    if name:
+        return name
+    func = getattr(fn, "func", None)  # e.g. functools.partial
+    if func is not None:
+        return _callable_name(func)
+    return type(fn).__name__
+
+
 class ToolTimeoutError(Exception):
     """Raised when a tool call exceeds its time limit.
 
@@ -88,7 +105,7 @@ def with_timeout(
         raise ValueError(f"seconds must be > 0, got {seconds!r}")
 
     def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
-        name = tool_name or fn.__name__
+        name = tool_name or _callable_name(fn)
 
         if inspect.iscoroutinefunction(fn):
 
@@ -195,7 +212,7 @@ class TimeoutRegistry:
         Returns:
             Timeout-wrapped callable.
         """
-        name = tool_name or fn.__name__
+        name = tool_name or _callable_name(fn)
         limit = self._per_tool.get(name, self._default)
         return with_timeout(limit, tool_name=name)(fn)
 
